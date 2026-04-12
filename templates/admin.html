@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Админка Стрима</title>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: white; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #333; padding: 10px; text-align: left; }
+        th { background: #2c2c2c; }
+        .btn { padding: 10px 20px; cursor: pointer; border: none; border-radius: 5px; color: white; }
+        .btn-red { background: #e74c3c; }
+        .btn-blue { background: #3498db; }
+        .pa-active { color: #f1c40f; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Управление игрой</h1>
+    
+    <div style="display: flex; gap: 20px;">
+        <form action="/finish-stream" method="post">
+            <button type="submit" class="btn btn-red">ЗАКРЫТЬ СТРИМ (CSV + Сброс звезд)</button>
+        </form>
+
+        <form action="/test-drop" method="post">
+            <input type="text" name="vk_id" placeholder="VK ID" required>
+            <input type="text" name="nickname" placeholder="Никнейм" required>
+            <button type="submit" class="btn btn-blue">Дать тестовый бокс</button>
+        </form>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Никнейм</th>
+                <th>Звезды</th>
+                <th>ПА (Стримов)</th>
+                <th>Боксы (Обыч/Элит)</th>
+                <th>Статус ПА сегодня</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.vk_id }}</td>
+                <td>{{ user.nickname }}</td>
+                <td>{{ user.stars }} ⭐</td>
+                <td>{{ user.pa_charges }} ⚡</td>
+                <td>{{ user.std_boxes_today }} / {{ user.elite_boxes_today }}</td>
+                <td class="{{ 'pa-active' if user.pa_active_today == 1 else '' }}">
+                    {{ "АКТИВЕН" if user.pa_active_today == 1 else "Ожидание" }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
