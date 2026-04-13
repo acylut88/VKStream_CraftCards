@@ -1,0 +1,201 @@
+Test Type,Iteration,Days,Total Boxes
+Elite+Std,1,5,64
+Elite+Std,2,4,56
+Elite+Std,3,5,61
+Elite+Std,4,4,55
+Elite+Std,5,4,60
+Elite+Std,6,4,60
+Elite+Std,7,4,60
+Elite+Std,8,4,56
+Elite+Std,9,4,60
+Elite+Std,10,4,56
+Elite+Std,11,4,60
+Elite+Std,12,4,56
+Elite+Std,13,4,57
+Elite+Std,14,4,60
+Elite+Std,15,4,60
+Elite+Std,16,5,67
+Elite+Std,17,5,63
+Elite+Std,18,4,60
+Elite+Std,19,4,55
+Elite+Std,20,5,64
+Elite+Std,21,4,59
+Elite+Std,22,4,60
+Elite+Std,23,4,56
+Elite+Std,24,4,59
+Elite+Std,25,4,57
+Elite+Std,26,5,66
+Elite+Std,27,4,60
+Elite+Std,28,4,59
+Elite+Std,29,4,53
+Elite+Std,30,4,59
+Elite+Std,31,5,63
+Elite+Std,32,5,65
+Elite+Std,33,5,64
+Elite+Std,34,5,64
+Elite+Std,35,4,57
+Elite+Std,36,4,52
+Elite+Std,37,4,60
+Elite+Std,38,4,60
+Elite+Std,39,5,69
+Elite+Std,40,4,59
+Elite+Std,41,4,55
+Elite+Std,42,4,56
+Elite+Std,43,4,60
+Elite+Std,44,4,60
+Elite+Std,45,4,60
+Elite+Std,46,4,60
+Elite+Std,47,4,60
+Elite+Std,48,4,60
+Elite+Std,49,4,58
+Elite+Std,50,4,60
+Elite+Std,51,5,62
+Elite+Std,52,5,62
+Elite+Std,53,4,60
+Elite+Std,54,4,56
+Elite+Std,55,4,60
+Elite+Std,56,4,58
+Elite+Std,57,4,60
+Elite+Std,58,4,60
+Elite+Std,59,5,61
+Elite+Std,60,4,60
+Elite+Std,61,5,64
+Elite+Std,62,4,55
+Elite+Std,63,4,57
+Elite+Std,64,5,64
+Elite+Std,65,5,62
+Elite+Std,66,4,59
+Elite+Std,67,4,59
+Elite+Std,68,4,59
+Elite+Std,69,4,59
+Elite+Std,70,4,60
+Elite+Std,71,5,67
+Elite+Std,72,5,62
+Elite+Std,73,4,60
+Elite+Std,74,4,57
+Elite+Std,75,4,57
+Elite+Std,76,4,60
+Elite+Std,77,4,55
+Elite+Std,78,5,62
+Elite+Std,79,4,60
+Elite+Std,80,3,45
+Elite+Std,81,4,60
+Elite+Std,82,4,60
+Elite+Std,83,5,64
+Elite+Std,84,4,60
+Elite+Std,85,5,64
+Elite+Std,86,5,63
+Elite+Std,87,4,57
+Elite+Std,88,4,56
+Elite+Std,89,4,59
+Elite+Std,90,4,55
+Elite+Std,91,4,59
+Elite+Std,92,4,60
+Elite+Std,93,5,65
+Elite+Std,94,4,60
+Elite+Std,95,5,64
+Elite+Std,96,5,69
+Elite+Std,97,4,56
+Elite+Std,98,4,57
+Elite+Std,99,4,59
+Elite+Std,100,4,57
+Only Std,1,5,59
+Only Std,2,5,57
+Only Std,3,5,58
+Only Std,4,5,60
+Only Std,5,6,61
+Only Std,6,5,59
+Only Std,7,5,59
+Only Std,8,5,60
+Only Std,9,5,59
+Only Std,10,5,53
+Only Std,11,6,67
+Only Std,12,5,58
+Only Std,13,5,60
+Only Std,14,5,57
+Only Std,15,5,59
+Only Std,16,6,65
+Only Std,17,6,62
+Only Std,18,5,55
+Only Std,19,5,57
+Only Std,20,5,54
+Only Std,21,5,57
+Only Std,22,5,58
+Only Std,23,5,58
+Only Std,24,5,52
+Only Std,25,5,60
+Only Std,26,5,59
+Only Std,27,6,66
+Only Std,28,5,55
+Only Std,29,5,59
+Only Std,30,5,59
+Only Std,31,5,60
+Only Std,32,5,59
+Only Std,33,5,60
+Only Std,34,6,63
+Only Std,35,5,60
+Only Std,36,5,60
+Only Std,37,5,53
+Only Std,38,6,64
+Only Std,39,6,62
+Only Std,40,5,60
+Only Std,41,5,58
+Only Std,42,5,60
+Only Std,43,5,59
+Only Std,44,5,60
+Only Std,45,5,60
+Only Std,46,5,57
+Only Std,47,6,65
+Only Std,48,5,59
+Only Std,49,5,59
+Only Std,50,5,60
+Only Std,51,6,62
+Only Std,52,5,59
+Only Std,53,5,56
+Only Std,54,5,58
+Only Std,55,5,56
+Only Std,56,5,59
+Only Std,57,5,59
+Only Std,58,5,60
+Only Std,59,5,60
+Only Std,60,5,58
+Only Std,61,5,56
+Only Std,62,5,60
+Only Std,63,5,60
+Only Std,64,5,58
+Only Std,65,5,58
+Only Std,66,5,59
+Only Std,67,5,60
+Only Std,68,5,60
+Only Std,69,5,59
+Only Std,70,5,60
+Only Std,71,5,60
+Only Std,72,5,57
+Only Std,73,5,59
+Only Std,74,6,62
+Only Std,75,5,59
+Only Std,76,6,61
+Only Std,77,5,59
+Only Std,78,5,58
+Only Std,79,6,65
+Only Std,80,5,59
+Only Std,81,5,60
+Only Std,82,5,58
+Only Std,83,5,60
+Only Std,84,5,60
+Only Std,85,5,59
+Only Std,86,6,64
+Only Std,87,6,62
+Only Std,88,5,57
+Only Std,89,5,58
+Only Std,90,5,60
+Only Std,91,5,57
+Only Std,92,5,58
+Only Std,93,6,66
+Only Std,94,6,62
+Only Std,95,6,63
+Only Std,96,5,59
+Only Std,97,5,60
+Only Std,98,6,63
+Only Std,99,6,63
+Only Std,100,6,61

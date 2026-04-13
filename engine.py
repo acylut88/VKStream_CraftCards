@@ -46,13 +46,28 @@ class GameEngine:
         self.card_types = ['LT', 'ST', 'TT', 'PT']
 
     def calculate_card_count(self, box_number, stars, has_pa):
-        base = 4 + box_number
+        base = 4 + box_number * 2  # стандартный бокс, 1 звезда
+        """
+            № лутбокса - 1 звезда, кол-во боксов
+                    1  - 6
+                    2  - 8
+                    3  - 10
+                    4  - 12
+                    5  - 14
+                    6  - 16
+                    7  - 18
+                    8  - 20
+                    9  - 22
+                    10 - 24
+                    11 - 26
+                    12 - 28
+        """ 
         if has_pa:
-            return math.ceil(base * 2)
+            return math.ceil(base * 1.75)
         if stars == 3:
             return math.ceil(base * 1.5)
         if stars == 2:
-            return base + 2
+            return base + 3  
         return base
 
     def get_random_cards(self, box_number, has_pa, count, is_elite=False):
