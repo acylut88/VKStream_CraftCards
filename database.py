@@ -32,6 +32,18 @@ class DatabaseManager:
                 )
             ''')
             await db.commit()
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT,
+                    nickname TEXT,
+                    box_type TEXT,
+                    count INTEGER,
+                    rare_drops TEXT,  -- Будем хранить как строку через запятую
+                    merges TEXT,      -- Аналогично
+                    is_elite INTEGER
+                )
+            ''')
 
     async def get_user(self, vk_id, nickname=None):
         """Получает юзера или создает нового (Welcome-бонус: 3 звезды + 2 ПА)"""
@@ -146,3 +158,83 @@ class DatabaseManager:
             db.row_factory = aiosqlite.Row
             async with db.execute("SELECT * FROM users") as cursor:
                 return await cursor.fetchall()
+
+    async def get_all_inventories_grouped(self):
+        """Возвращает словари инвентарей для всех юзеров: {vk_id: [cards]}"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            # Сортируем по уровню, чтобы редкие карты были в начале списка
+            async with db.execute("SELECT * FROM inventory WHERE quantity > 0 ORDER BY card_level DESC") as cursor:
+                rows = await cursor.fetchall()
+                data = {}
+                for r in rows:
+                    if r['user_id'] not in data:
+                        data[r['user_id']] = []
+                    data[r['user_id']].append(dict(r))
+                return data
+
+    async def update_user_field(self, vk_id, field, change):
+        """Универсальный метод для +/- параметров (звезды, ПА)"""
+        # Безопасный список полей, которые можно менять
+        allowed_fields = ["stars", "pa_charges"]
+        if field not in allowed_fields:
+            return
+
+        async with aiosqlite.connect(self.db_path) as db:
+            # Используем MAX(0, ...), чтобы значения не уходили в минус
+            await db.execute(
+                f"UPDATE users SET {field} = MAX(0, {field} + ?) WHERE vk_id = ?",
+                (change, vk_id)
+            )
+            await db.commit()
+
+    async def add_log(self, nickname, box_type, count, rare_drops, merges, is_elite):
+        async with aiosqlite.connect(self.db_path) as db:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            await db.execute("""
+                INSERT INTO logs (timestamp, nickname, box_type, count, rare_drops, merges, is_elite)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (timestamp, nickname, box_type, count, ", ".join(rare_drops), ", ".join(merges), 1 if is_elite else 0))
+            await db.commit()
+
+    async def clear_all_inventories(self):
+        """Полная очистка всех карт у всех игроков"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM inventory")
+            await db.commit()
+
+    async def clear_user_inventory(self, vk_id):
+        """Удаление всех карт конкретного пользователя"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM inventory WHERE user_id = ?", (vk_id,))
+            await db.commit()
+            
+    async def get_recent_logs(self, limit=100):
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM logs ORDER BY id DESC LIMIT ?", (limit,)) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+            
+    async def clear_full_database(self):
+        """Полная очистка: удаление ВСЕХ юзеров и ВСЕХ инвентарей"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM inventory")
+            await db.execute("DELETE FROM users")
+            await db.commit()
+
+    async def delete_user_completely(self, vk_id):
+        """Полное удаление пользователя и его вещей из базы"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM inventory WHERE user_id = ?", (vk_id,))
+            await db.execute("DELETE FROM users WHERE vk_id = ?", (vk_id,))
+            await db.commit()
+
+    async def rename_user(self, vk_id, new_nickname):
+        """Смена никнейма зрителя"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("UPDATE users SET nickname = ? WHERE vk_id = ?", (new_nickname, vk_id))
+            await db.commit()
+
+    

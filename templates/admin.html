@@ -1,58 +1,216 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>Админка Стрима</title>
+    <meta charset="UTF-8">
+    <title>Панель управления VKStream CraftCards</title>
     <style>
-        body { font-family: sans-serif; background: #1a1a1a; color: white; padding: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #333; padding: 10px; text-align: left; }
-        th { background: #2c2c2c; }
-        .btn { padding: 10px 20px; cursor: pointer; border: none; border-radius: 5px; color: white; }
-        .btn-red { background: #e74c3c; }
-        .btn-blue { background: #3498db; }
-        .pa-active { color: #f1c40f; font-weight: bold; }
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; padding: 20px; }
+        
+        .controls { 
+            display: flex; gap: 15px; background: #1e1e1e; padding: 15px; 
+            border-radius: 8px; margin-bottom: 20px; align-items: center; justify-content: center; 
+        }
+        
+        table { width: 100%; border-collapse: collapse; background: #1e1e1e; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        
+        /* Центрируем заголовки и ячейки */
+        th, td { 
+            padding: 12px; 
+            border-bottom: 1px solid #333; 
+            text-align: center; /* Основное правило центрирования */
+            vertical-align: middle; 
+        }
+        
+        th { background: #2c2c2c; cursor: pointer; font-size: 12px; color: #aaa; text-transform: uppercase; }
+        th:hover { background: #3d3d3d; color: #fff; }
+
+        /* Специальное выравнивание для инвентаря (его лучше оставить по левому краю или центру, но с ограничением) */
+        .inventory-cell { 
+            max-width: 400px; 
+            text-align: center; 
+        }
+
+        .edit-btn { 
+            background: #444; border: none; color: white; padding: 4px 10px; 
+            cursor: pointer; border-radius: 3px; font-weight: bold; transition: 0.2s;
+        }
+        .edit-btn:hover { background: #007bff; }
+        
+        .badge { display: inline-block; padding: 3px 6px; border-radius: 4px; margin: 2px; font-size: 10px; font-weight: bold; color: white; }
+        .lvl-low { background: #5a6268; } .lvl-mid { background: #007bff; } 
+        .lvl-high { background: #6f42c1; } .lvl-max { background: #ffc107; color: #000; box-shadow: 0 0 5px #ffc107; }
+
+        .btn { padding: 10px 16px; cursor: pointer; border: none; border-radius: 5px; color: white; font-weight: bold; }
+        .btn-red { background: #dc3545; } .btn-blue { background: #007bff; } .btn-gold { background: #f39c12; }
+        input { padding: 10px; border-radius: 5px; border: 1px solid #333; background: #121212; color: white; }
+        
+        /* Оформление значений внутри кнопок управления */
+        .val-display { display: inline-block; min-width: 40px; font-weight: bold; font-size: 1.1em; }
     </style>
+
 </head>
 <body>
+
     <h1>Управление игрой</h1>
     
-    <div style="display: flex; gap: 20px;">
+    <div class="controls">
+        <a href="/logs" class="btn btn-blue">👁 Смотреть Логи</a>
         <form action="/finish-stream" method="post">
-            <button type="submit" class="btn btn-red">ЗАКРЫТЬ СТРИМ (CSV + Сброс звезд)</button>
+            <button type="submit" class="btn btn-red">ЗАКРЫТЬ СТРИМ</button>
+        </form>
+        <form action="/clear-all-inventories" method="post" onsubmit="return confirm('ТОЧНО УДАЛИТЬ ВСЕ КАРТЫ У ВСЕХ?')">
+            <button type="submit" class="btn" style="background: #8e44ad;">🔥 ОЧИСТИТЬ ВСЕ ИНВЕНТАРИ</button>
         </form>
 
-        <form action="/test-drop" method="post">
+        <form action="/test-drop" method="post" style="display: flex; gap: 5px;">
             <input type="text" name="vk_id" placeholder="VK ID" required>
-            <input type="text" name="nickname" placeholder="Никнейм" required>
-            <button type="submit" class="btn btn-blue">Дать тестовый бокс</button>
+            <input type="text" name="nickname" placeholder="Ник" required>
+            <button type="submit" class="btn btn-blue">+ Стандарт Бокс</button>
+        </form>
+
+        <form action="/test-elite-drop" method="post" style="display: flex; gap: 5px;">
+            <input type="text" name="vk_id" placeholder="VK ID">
+            <input type="text" name="nickname" placeholder="Ник">
+            <button type="submit" class="btn btn-gold">+ Элитный Бокс</button>
+        </form>
+        <form action="/clear-full-database" method="post" onsubmit="return confirm('ВНИМАНИЕ! Это удалит ВСЕХ пользователей и ВСЕ карты. Продолжить?')">
+            <button type="submit" class="btn" style="background: #c0392b;">💀 УДАЛИТЬ ВСЮ БАЗУ</button>
         </form>
     </div>
 
-    <table>
+    <table id="usersTable">
         <thead>
             <tr>
-                <th>ID</th>
-                <th>Никнейм</th>
-                <th>Звезды</th>
-                <th>ПА (Стримов)</th>
-                <th>Боксы (Обыч/Элит)</th>
-                <th>Статус ПА сегодня</th>
+                <th>Действия</th> <!-- Новая колонка для удаления -->
+                <th onclick="sortTable(1)">ID ↕</th>
+                <th onclick="sortTable(2)">Зритель (Редакт.) ↕</th>
+                <th onclick="sortTable(3)">Звезды ↕</th>
+                <th onclick="sortTable(4)">ПА (заряды) ↕</th>
+                <th>Боксы (Ст/Эл)</th>
+                <th>Инвентарь</th>
+                <th onclick="sortTable(7)">Статус ПА ↕</th>
             </tr>
         </thead>
         <tbody>
             {% for user in users %}
             <tr>
-                <td>{{ user.vk_id }}</td>
-                <td>{{ user.nickname }}</td>
-                <td>{{ user.stars }} ⭐</td>
-                <td>{{ user.pa_charges }} ⚡</td>
+                <!-- Кнопка полного удаления юзера -->
+                <td>
+                    <form action="/delete-user" method="post" onsubmit="return confirm('Удалить зрителя {{ user.nickname }} навсегда?')">
+                        <input type="hidden" name="vk_id" value="{{ user.vk_id }}">
+                        <button type="submit" style="background:none; border:none; color:#e74c3c; cursor:pointer; font-size:18px;" title="Удалить пользователя целиком">👤&times;</button>
+                    </form>
+                </td>
+
+                <td><small style="color: #666;">{{ user.vk_id }}</small></td>
+                
+                <!-- Редактируемое имя -->
+                <td>
+                    <form action="/rename-user" method="post" style="display:flex; align-items:center; gap:5px;">
+                        <input type="hidden" name="vk_id" value="{{ user.vk_id }}">
+                        <input type="text" name="new_nickname" value="{{ user.nickname }}" 
+                            style="background:none; border:1px solid #333; color:white; padding:2px 5px; width:100px; text-align:center;">
+                        <button type="submit" style="background:none; border:none; color:#27ae60; cursor:pointer; font-size:14px;">✔</button>
+                    </form>
+                </td>
+                
+                <!-- Кнопки звезд -->
+                <td>
+                    <form action="/update-user" method="post" style="display:inline;">
+                        <input type="hidden" name="vk_id" value="{{ user.vk_id }}">
+                        <input type="hidden" name="field" value="stars">
+                        <button name="action" value="dec" class="edit-btn">-</button>
+                        <span class="val-display">{{ user.stars }} ⭐</span>
+                        <button name="action" value="inc" class="edit-btn">+</button>
+                    </form>
+                </td>
+
+                <!-- Кнопки ПА -->
+                <td>
+                    <form action="/update-user" method="post" style="display:inline;">
+                        <input type="hidden" name="vk_id" value="{{ user.vk_id }}">
+                        <input type="hidden" name="field" value="pa_charges">
+                        <button name="action" value="dec" class="edit-btn">-</button>
+                        <span class="val-display">{{ user.pa_charges }} ⚡</span>
+                        <button name="action" value="inc" class="edit-btn">+</button>
+                    </form>
+                </td>
+
                 <td>{{ user.std_boxes_today }} / {{ user.elite_boxes_today }}</td>
-                <td class="{{ 'pa-active' if user.pa_active_today == 1 else '' }}">
-                    {{ "АКТИВЕН" if user.pa_active_today == 1 else "Ожидание" }}
+                
+                <!-- Инвентарь -->
+                <td style="position: relative; max-width: 350px; padding-right: 30px;">
+                    <form action="/clear-user-inventory" method="post" 
+                        style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%);" 
+                        onsubmit="return confirm('Очистить карты {{ user.nickname }}?')">
+                        <input type="hidden" name="vk_id" value="{{ user.vk_id }}">
+                        <button type="submit" title="Очистить инвентарь"
+                                style="background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 20px;">&times;</button>
+                    </form>
+
+                    {% if inventories.get(user.vk_id) %}
+                        {% for card in inventories[user.vk_id] %}
+                            {% set lvl = card.card_level %}
+                            <span class="badge 
+                                {% if lvl <= 3 %}lvl-low
+                                {% elif lvl <= 6 %}lvl-mid
+                                {% elif lvl <= 9 %}lvl-high
+                                {% else %}lvl-max{% endif %}">
+                                {{ card.card_type }}-{{ lvl }} ({{ card.quantity }})
+                            </span>
+                        {% endfor %}
+                    {% else %}
+                        <span style="color: #444;">Пусто</span>
+                    {% endif %}
+                </td>
+
+                <td>
+                    {% if user.pa_active_today == 1 %}
+                        <span class="pa-status pa-on">✅ АКТИВЕН</span>
+                    {% else %}
+                        <span class="pa-status pa-off">⏳ ЖДЕТ</span>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+
+
+    <script>
+        function sortTable(n) {
+            var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+            table = document.getElementById("usersTable");
+            switching = true;
+            dir = "asc";
+            while (switching) {
+                switching = false;
+                rows = table.rows;
+                for (i = 1; i < (rows.length - 1); i++) {
+                    shouldSwitch = false;
+                    x = rows[i].getElementsByTagName("TD")[n];
+                    y = rows[i + 1].getElementsByTagName("TD")[n];
+                    if (dir == "asc") {
+                        if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
+                            shouldSwitch = true; break;
+                        }
+                    } else if (dir == "desc") {
+                        if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
+                            shouldSwitch = true; break;
+                        }
+                    }
+                }
+                if (shouldSwitch) {
+                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                    switching = true;
+                    switchcount ++;
+                } else {
+                    if (switchcount == 0 && dir == "asc") {
+                        dir = "desc"; switching = true;
+                    }
+                }
+            }
+        }
+    </script>
 </body>
 </html>
