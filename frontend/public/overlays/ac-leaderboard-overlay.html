@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AC Leaderboard - OBS Overlay</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 1920px;
+            height: 1080px;
+            background: transparent;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-end;
+            padding: 40px;
+            overflow: hidden;
+        }
+
+        .leaderboard-container {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.95) 0%, rgba(5, 150, 105, 0.95) 100%);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            width: 500px;
+            animation: slideIn 0.8s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(600px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 15px;
+        }
+
+        .header-icon {
+            font-size: 40px;
+        }
+
+        .header-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        .leaderboard-entry {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            margin-bottom: 12px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            border-left: 4px solid rgba(255, 255, 255, 0.6);
+            animation: popIn 0.5s ease-out backwards;
+            transition: all 0.3s ease;
+        }
+
+        .leaderboard-entry:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateX(5px);
+        }
+
+        .leaderboard-entry:nth-child(1) {
+            border-left-color: #fbbf24;
+            background: rgba(251, 191, 36, 0.2);
+            animation-delay: 0s;
+        }
+
+        .leaderboard-entry:nth-child(2) {
+            border-left-color: #c0c0c0;
+            background: rgba(192, 192, 192, 0.15);
+            animation-delay: 0.1s;
+        }
+
+        .leaderboard-entry:nth-child(3) {
+            border-left-color: #cd7f32;
+            background: rgba(205, 127, 50, 0.15);
+            animation-delay: 0.2s;
+        }
+
+        .leaderboard-entry:nth-child(4),
+        .leaderboard-entry:nth-child(5) {
+            animation-delay: 0.3s;
+        }
+
+        @keyframes popIn {
+            from {
+                opacity: 0;
+                transform: scale(0.8) translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateX(0);
+            }
+        }
+
+        .rank-medal {
+            font-size: 28px;
+            min-width: 45px;
+            text-align: center;
+        }
+
+        .player-info {
+            flex: 1;
+            margin-left: 15px;
+        }
+
+        .player-nickname {
+            font-weight: bold;
+            color: #fff;
+            font-size: 16px;
+            text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.4);
+        }
+
+        .player-ac {
+            font-weight: bold;
+            color: #fff;
+            font-size: 20px;
+            min-width: 80px;
+            text-align: right;
+            text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.4);
+        }
+
+        .ac-badge {
+            background: rgba(255, 255, 255, 0.3);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        .updating {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="leaderboard-container">
+        <div class="header">
+            <div class="header-icon">💰</div>
+            <div class="header-title">AC Лидерборд</div>
+        </div>
+        <div id="leaderboard-content">
+            <div class="empty-state">Ожидание данных...</div>
+        </div>
+        <div class="updating">⏱️ Обновление: каждые 5 сек</div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8001/api/stream/leaderboard/1/ac/top?limit=5';
+        const POLL_INTERVAL = 5000; // 5 seconds
+        const MEDALS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+
+        async function updateLeaderboard() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                if (!Array.isArray(data)) return;
+
+                const content = document.getElementById('leaderboard-content');
+                
+                if (data.length === 0) {
+                    content.innerHTML = '<div class="empty-state">Нет данных</div>';
+                    return;
+                }
+
+                let html = '';
+                data.forEach((entry, idx) => {
+                    const medal = MEDALS[idx] || (idx + 1) + '️⃣';
+                    const nickname = entry.nickname || entry.vk_id.substring(0, 12);
+                    const acValue = entry.ac_earned_this_stream || 0;
+
+                    html += `
+                        <div class="leaderboard-entry">
+                            <div class="rank-medal">${medal}</div>
+                            <div class="player-info">
+                                <div class="player-nickname">${nickname}</div>
+                            </div>
+                            <div class="ac-badge">${acValue} AC</div>
+                        </div>
+                    `;
+                });
+
+                content.innerHTML = html;
+            } catch (error) {
+                console.error('Failed to fetch leaderboard:', error);
+            }
+        }
+
+        // Initial fetch and poll
+        updateLeaderboard();
+        setInterval(updateLeaderboard, POLL_INTERVAL);
+    </script>
+</body>
+</html>

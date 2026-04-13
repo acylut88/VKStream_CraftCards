@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pytest *)",
+      "Bash(python *)"
+    ]
+  },
+  "$version": 3
+}

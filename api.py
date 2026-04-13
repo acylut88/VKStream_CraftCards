@@ -3,7 +3,7 @@
 """
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from datetime import datetime, timedelta
 import json
@@ -25,6 +25,8 @@ app.add_middleware(
 # --- Pydantic модели ---
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     vk_id: str
     nickname: str
     stars: int
@@ -34,9 +36,6 @@ class UserResponse(BaseModel):
     elite_boxes_today: int
     ac_balance: int
     ac_today: int
-
-    class Config:
-        from_attributes = True
 
 class BoxRequest(BaseModel):
     vk_id: str
@@ -50,6 +49,12 @@ class UserUpdateRequest(BaseModel):
     ac_balance: Optional[int] = None
     nickname: Optional[str] = None
 
+class UserCreateRequest(BaseModel):
+    vk_id: str
+    nickname: str
+    stars: int = 3
+    pa_charges: int = 0
+
 class LogResponse(BaseModel):
     timestamp: str
     nickname: str
@@ -58,6 +63,43 @@ class LogResponse(BaseModel):
     rare_drops: str
     merges: str
     ac_won: int
+
+# Stream Events Models
+class StreamSessionRequest(BaseModel):
+    event_type: str  # 'card' | 'ac_farming' | 'both'
+    stream_date: str = None
+    stream_name: Optional[str] = None
+
+class StreamSessionResponse(BaseModel):
+    session_id: int
+    stream_date: str
+    stream_name: Optional[str]
+    event_type: str
+    status: str
+    created_at: str
+
+class LeaderboardEntry(BaseModel):
+    vk_id: str
+    nickname: Optional[str]
+    rank: Optional[int]
+    current_value: int
+    card_distribution: Optional[str]
+
+class RareDropResponse(BaseModel):
+    vk_id: str
+    nickname: str
+    card_type: str
+    card_level: int
+    probability: float
+    timestamp: str
+    box_type: str
+
+class OverlayWinnerResponse(BaseModel):
+    winner_vk_id: str
+    winner_nickname: str
+    card_type: str
+    card_level: int
+    timestamp: str
 
 # --- MANAGERS (для WebSocket) ---
 class ConnectionManager:
@@ -86,7 +128,7 @@ manager = ConnectionManager()
 async def get_users():
     """Список всех пользователей"""
     users = await db.get_all_users_admin()
-    return users
+    return [dict(u) for u in users]
 
 @app.get("/api/users/{vk_id}", response_model=UserResponse)
 async def get_user(vk_id: str):
@@ -94,7 +136,31 @@ async def get_user(vk_id: str):
     user = await db.get_user(vk_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+    return dict(user)
+
+@app.post("/api/users", response_model=UserResponse)
+async def create_user_endpoint(request: UserCreateRequest):
+    """Создать нового пользователя"""
+    try:
+        user = await db.create_user(
+            vk_id=request.vk_id,
+            nickname=request.nickname,
+            stars=request.stars,
+            pa_charges=request.pa_charges
+        )
+        
+        await manager.broadcast({
+            "type": "user_created",
+            "vk_id": request.vk_id,
+            "nickname": request.nickname,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        return dict(user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to create user")
 
 @app.post("/api/users/{vk_id}/update")
 async def update_user(vk_id: str, data: UserUpdateRequest):
@@ -232,7 +298,7 @@ async def get_analytics():
 async def get_logs(limit: int = Query(100, le=1000)):
     """Получить логи событий"""
     logs = await db.get_recent_logs(limit)
-    return logs
+    return [dict(log) for log in logs]
 
 @app.get("/api/stats/timeline")
 async def get_timeline_stats(days: int = Query(7, ge=1, le=30)):
@@ -286,6 +352,229 @@ async def clear_all_data():
     
     return {"status": "database_cleared"}
 
+# --- STREAM EVENTS ENDPOINTS ---
+
+@app.post("/api/stream/start-day")
+async def start_stream_day():
+    """Сброс pa_active_today для ВСЕХ игроков перед началом стрима"""
+    try:
+        await db.reset_pa_active_today_all()
+        users = await db.get_all_users_admin()
+        
+        await manager.broadcast({
+            "type": "stream_started",
+            "users_count": len(users),
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        return {"status": "success", "users_reset": len(users)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/stream/session/create", response_model=StreamSessionResponse)
+async def create_stream_session(request: StreamSessionRequest):
+    """Создать новую потоковую сессию"""
+    try:
+        from datetime import date
+        stream_date = request.stream_date or str(date.today())
+        
+        session_id = await db.create_stream_session(
+            event_type=request.event_type,
+            stream_date=stream_date,
+            stream_name=request.stream_name
+        )
+        
+        # Сбросить pa_active_today для всех игроков
+        await db.reset_pa_active_today_all()
+        
+        await manager.broadcast({
+            "type": "session_created",
+            "session_id": session_id,
+            "event_type": request.event_type,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        return {
+            "session_id": session_id,
+            "stream_date": stream_date,
+            "stream_name": request.stream_name,
+            "event_type": request.event_type,
+            "status": "active",
+            "created_at": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/stream/session/{session_id}/finish")
+async def finish_stream_session(session_id: int):
+    """Завершить потоковую сессию"""
+    try:
+        await db.finish_stream_session(session_id)
+        
+        await manager.broadcast({
+            "type": "session_finished",
+            "session_id": session_id,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        return {"status": "success", "session_id": session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stream/leaderboard/{session_id}/{event_type}")
+async def get_event_leaderboard(session_id: int, event_type: str, limit: int = Query(10, ge=1, le=50)):
+    """Получить текущий лидерборд для события"""
+    try:
+        leaderboard = await db.get_current_leaderboard(session_id, event_type, limit)
+        
+        # Добавляем ранги
+        result = []
+        for idx, entry in enumerate(leaderboard, 1):
+            result.append({
+                "rank": idx,
+                "vk_id": entry.get('vk_id'),
+                "nickname": entry.get('vk_id'),  # Получить никнейм из users
+                "current_value": entry.get('current_value'),
+                "card_distribution": entry.get('card_distribution')
+            })
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stream/leaderboard/{session_id}/ac/top")
+async def get_ac_leaderboard(session_id: int, limit: int = Query(10, ge=1, le=50)):
+    """Получить лидерборд по AC"""
+    try:
+        leaderboard = await db.get_ac_leaderboard(session_id, limit)
+        return leaderboard
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stream/overlay/card-winner")
+async def get_card_winner(session_id: int = Query(None)):
+    """Получить последнего победителя в гонке на 10 уровень"""
+    try:
+        if not session_id:
+            session = await db.get_current_active_session()
+            if not session:
+                raise HTTPException(status_code=404, detail="No active session")
+            session_id = session['session_id']
+        
+        # Получить первого по результатам (rank = 1)
+        leaderboard = await db.get_current_leaderboard(session_id, 'card', 1)
+        
+        if not leaderboard:
+            return {"winner_vk_id": None, "winner_nickname": None}
+        
+        winner = leaderboard[0]
+        return {
+            "winner_vk_id": winner['vk_id'],
+            "winner_nickname": winner['vk_id'],
+            "card_type": "N/A",  # Можно расширить JSON в БД
+            "card_level": winner['current_value'],
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stream/overlay/ac-top-5")
+async def get_ac_top_5(session_id: int = Query(None)):
+    """Получить топ-5 по AC для OBS overlay"""
+    try:
+        if not session_id:
+            session = await db.get_current_active_session()
+            if not session:
+                raise HTTPException(status_code=404, detail="No active session")
+            session_id = session['session_id']
+        
+        leaderboard = await db.get_ac_leaderboard(session_id, 5)
+        return leaderboard
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stream/overlay/rare-drop")
+async def get_rare_drop(session_id: int = Query(None)):
+    """Получить последний редкий дроп для OBS overlay"""
+    try:
+        if not session_id:
+            session = await db.get_current_active_session()
+            if not session:
+                return {"drop_id": None}
+            session_id = session['session_id']
+        
+        rare_drops = await db.get_recent_rare_drops(session_id, 1)
+        
+        if not rare_drops:
+            return {"drop_id": None}
+        
+        drop = rare_drops[0]
+        return {
+            "vk_id": drop['vk_id'],
+            "nickname": drop['nickname'],
+            "card_type": drop['card_type'],
+            "card_level": drop['card_level'],
+            "probability": float(drop['probability']),
+            "timestamp": drop['timestamp'],
+            "box_type": drop['box_type']
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stream/sessions/{session_id}/export-csv")
+async def export_session_csv(session_id: int):
+    """Экспортировать финальные результаты сессии в CSV"""
+    try:
+        session_info = await db.get_session_info(session_id)
+        if not session_info:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Получаем результаты для обоих типов событий (card и ac)
+        card_results = await db.get_session_results(session_id, 'card')
+        ac_results = await db.get_session_results(session_id, 'ac')
+        
+        # Формируем CSV
+        csv_lines = []
+        csv_lines.append(f"VKStream Event Export - {session_info['stream_name']}")
+        csv_lines.append(f"Stream Date: {session_info['stream_date']}")
+        csv_lines.append(f"Event Type: {session_info['event_type']}")
+        csv_lines.append(f"Exported: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        csv_lines.append("")
+        
+        # Card Race Results
+        if card_results:
+            csv_lines.append("CARD RACE - Level 10 Challenge")
+            csv_lines.append("Rank,VK ID,Level")
+            for idx, result in enumerate(card_results, 1):
+                csv_lines.append(f"{idx},{result['vk_id']},{result['current_value']}")
+            csv_lines.append("")
+        
+        # AC Farming Results
+        if ac_results:
+            csv_lines.append("AC FARMING")
+            csv_lines.append("Rank,VK ID,AC Earned")
+            for idx, result in enumerate(ac_results, 1):
+                csv_lines.append(f"{idx},{result['vk_id']},{result['ac_earned_this_stream']}")
+            csv_lines.append("")
+        
+        csv_content = "\n".join(csv_lines)
+        
+        return {
+            "filename": f"stream-results-{session_id}.csv",
+            "content": csv_content,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stream/sessions")
+async def get_all_sessions():
+    """Получить все завершенные сессии (для архива)"""
+    try:
+        return await db.get_stream_sessions_all()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --- WebSocket для real-time обновлений ---
 
 @app.websocket("/ws/live")
@@ -312,4 +601,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8001, reload=True)
+    uvicorn.run("api:app", host="127.0.0.1", port=8001, reload=True)

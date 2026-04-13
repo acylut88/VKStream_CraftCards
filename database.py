@@ -39,10 +39,74 @@ class DatabaseManager:
                     count INTEGER,
                     rare_drops TEXT,
                     merges TEXT,
-                    is_elite INTEGER DEFAULT 0,  -- ПРОВЕРЬ ЭТУ СТРОКУ
-                    ac_won INTEGER DEFAULT 0     -- И ЭТУ ТОЖЕ
+                    is_elite INTEGER DEFAULT 0,
+                    ac_won INTEGER DEFAULT 0
                 )
             ''')
+            
+            # Таблица потоков (стримерские сессии)
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS stream_sessions (
+                    session_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    stream_date DATE,
+                    stream_name TEXT,
+                    event_type TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    completed_at DATETIME,
+                    notes TEXT
+                )
+            ''')
+            
+            # Таблица результатов событий
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS stream_event_results (
+                    result_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL,
+                    event_type TEXT,
+                    player_vk_id TEXT NOT NULL,
+                    player_nickname TEXT,
+                    rank INTEGER,
+                    value INTEGER,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    json_data TEXT,
+                    FOREIGN KEY (session_id) REFERENCES stream_sessions(session_id)
+                )
+            ''')
+            
+            # Таблица снимков состояния (real-time tracking)
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS stream_session_snapshots (
+                    snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL,
+                    vk_id TEXT NOT NULL,
+                    event_type TEXT,
+                    current_rank INTEGER,
+                    current_value INTEGER,
+                    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    card_distribution TEXT,
+                    ac_earned_this_stream INTEGER DEFAULT 0,
+                    FOREIGN KEY (session_id) REFERENCES stream_sessions(session_id)
+                )
+            ''')
+            
+            # Таблица редких дропов
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS stream_rare_drops (
+                    drop_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL,
+                    vk_id TEXT NOT NULL,
+                    nickname TEXT,
+                    card_type TEXT,
+                    card_level INTEGER,
+                    probability REAL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    box_type TEXT,
+                    FOREIGN KEY (session_id) REFERENCES stream_sessions(session_id)
+                )
+            ''')
+            
+            await db.commit()
 
     async def get_user(self, vk_id, nickname=None):
         async with aiosqlite.connect(self.db_path) as db:
@@ -172,11 +236,19 @@ class DatabaseManager:
                     data[r['user_id']].append(dict(r))
                 return data
 
-    async def update_user_field(self, vk_id, field, change):
-        allowed = ["stars", "pa_charges", "ac_balance"]
-        if field not in allowed: return
+    async def update_user_field(self, vk_id, field, change=None, action=None):
+        """Update user field with support for increment/reset operations"""
+        allowed = ["stars", "pa_charges", "ac_balance", "pa_active_today"]
+        if field not in allowed: 
+            return
+        
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(f"UPDATE users SET {field} = MAX(0, {field} + ?) WHERE vk_id = ?", (change, vk_id))
+            if action == "reset":
+                # Reset field to 0
+                await db.execute(f"UPDATE users SET {field} = 0 WHERE vk_id = ?", (vk_id,))
+            elif isinstance(change, int):
+                # Increment field (change can be positive or negative)
+                await db.execute(f"UPDATE users SET {field} = MAX(0, {field} + ?) WHERE vk_id = ?", (change, vk_id))
             await db.commit()
 
     async def add_log(self, nickname, box_type, count, rare_drops, merges, is_elite, ac_won=0):
@@ -228,10 +300,191 @@ class DatabaseManager:
             await db.execute("DELETE FROM users WHERE vk_id = ?", (vk_id,))
             await db.commit()
 
+    async def create_user(self, vk_id, nickname, stars=3, pa_charges=0):
+        """Создать нового пользователя"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            # Проверяем, существует ли пользователь
+            async with db.execute("SELECT * FROM users WHERE vk_id = ?", (vk_id,)) as cursor:
+                existing = await cursor.fetchone()
+            if existing:
+                raise ValueError(f"User with vk_id {vk_id} already exists")
+            
+            await db.execute(
+                "INSERT INTO users (vk_id, nickname, stars, pa_charges) VALUES (?, ?, ?, ?)",
+                (vk_id, nickname, stars, pa_charges)
+            )
+            await db.commit()
+            return await self.get_user(vk_id)
+
     async def rename_user(self, vk_id, new_nickname):
         """Смена никнейма зрителя"""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("UPDATE users SET nickname = ? WHERE vk_id = ?", (new_nickname, vk_id))
             await db.commit()
+
+    # ========== STREAM EVENTS METHODS ==========
+    
+    async def create_stream_session(self, event_type, stream_date, stream_name=None):
+        """Создать новую потоковую сессию"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO stream_sessions (stream_date, stream_name, event_type, status)
+                VALUES (?, ?, ?, 'active')
+            """, (stream_date, stream_name, event_type))
+            await db.commit()
+            
+            async with db.execute("SELECT session_id FROM stream_sessions ORDER BY session_id DESC LIMIT 1") as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    async def get_current_active_session(self):
+        """Получить текущую активную сессию"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT * FROM stream_sessions 
+                WHERE status = 'active' 
+                ORDER BY created_at DESC LIMIT 1
+            """) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def finish_stream_session(self, session_id):
+        """Завершить потоковую сессию"""
+        async with aiosqlite.connect(self.db_path) as db:
+            from datetime import datetime
+            await db.execute("""
+                UPDATE stream_sessions 
+                SET status = 'completed', completed_at = ? 
+                WHERE session_id = ?
+            """, (datetime.now().isoformat(), session_id))
+            await db.commit()
+
+    async def update_user_event_progress(self, session_id, vk_id, event_type, value, cards_data=None):
+        """Обновить прогресс игрока в событии"""
+        import json
+        async with aiosqlite.connect(self.db_path) as db:
+            json_data = json.dumps(cards_data) if cards_data else None
+            
+            # Проверяем, есть ли уже запись
+            async with db.execute("""
+                SELECT snapshot_id FROM stream_session_snapshots
+                WHERE session_id = ? AND vk_id = ? AND event_type = ?
+            """, (session_id, vk_id, event_type)) as cursor:
+                existing = await cursor.fetchone()
+            
+            if existing:
+                # Обновляем существующую запись
+                await db.execute("""
+                    UPDATE stream_session_snapshots
+                    SET current_value = ?, card_distribution = ?, last_updated = CURRENT_TIMESTAMP
+                    WHERE session_id = ? AND vk_id = ? AND event_type = ?
+                """, (value, json_data, session_id, vk_id, event_type))
+            else:
+                # Создаем новую запись
+                await db.execute("""
+                    INSERT INTO stream_session_snapshots 
+                    (session_id, vk_id, event_type, current_value, card_distribution)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (session_id, vk_id, event_type, value, json_data))
+            
+            await db.commit()
+
+    async def get_current_leaderboard(self, session_id, event_type, limit=10):
+        """Получить текущий лидерборд для события"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT * FROM stream_session_snapshots
+                WHERE session_id = ? AND event_type = ?
+                ORDER BY current_value DESC
+                LIMIT ?
+            """, (session_id, event_type, limit)) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
+    async def get_ac_leaderboard(self, session_id, limit=10):
+        """Получить лидерборд по AC за сессию"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT vk_id, 
+                       (SELECT nickname FROM users WHERE vk_id = stream_session_snapshots.vk_id) as nickname,
+                       ac_earned_this_stream,
+                       ROW_NUMBER() OVER (ORDER BY ac_earned_this_stream DESC) as rank
+                FROM stream_session_snapshots
+                WHERE session_id = ? AND event_type = 'ac_farming'
+                ORDER BY ac_earned_this_stream DESC
+                LIMIT ?
+            """, (session_id, limit)) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
+    async def record_rare_drop(self, session_id, vk_id, nickname, card_type, level, probability, box_type):
+        """Записать редкий дроп"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO stream_rare_drops 
+                (session_id, vk_id, nickname, card_type, card_level, probability, box_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (session_id, vk_id, nickname, card_type, level, probability, box_type))
+            await db.commit()
+
+    async def get_recent_rare_drops(self, session_id, limit=5):
+        """Получить последние редкие дропы"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT * FROM stream_rare_drops
+                WHERE session_id = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (session_id, limit)) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
+    async def reset_pa_active_today_all(self):
+        """Сбросить pa_active_today для ВСЕх игроков"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("UPDATE users SET pa_active_today = 0")
+            await db.commit()
+
+    async def get_session_results(self, session_id: int, event_type: str):
+        """Получить финальные результаты сессии (для CSV export)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT vk_id, 'vk_id' as vk_id, current_value, ac_earned_this_stream
+                FROM stream_session_snapshots
+                WHERE session_id = ? AND event_type = ?
+                ORDER BY current_value DESC
+            """, (session_id, event_type)) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
+    async def get_session_info(self, session_id: int):
+        """Получить информацию о сессии"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT session_id, stream_date, stream_name, event_type, status, created_at, completed_at
+                FROM stream_sessions
+                WHERE session_id = ?
+            """, (session_id,)) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def get_stream_sessions_all(self):
+        """Получить все сессии (для архива)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT session_id, stream_date, stream_name, event_type, status, created_at, completed_at
+                FROM stream_sessions
+                ORDER BY created_at DESC
+            """) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
 
     

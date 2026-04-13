@@ -44,6 +44,8 @@ export interface Analytics {
 // Users
 export const getUsers = () => API.get<User[]>('/api/users');
 export const getUser = (vk_id: string) => API.get<User>(`/api/users/${vk_id}`);
+export const createUser = (data: { vk_id: string; nickname: string; stars?: number; pa_charges?: number }) =>
+  API.post<User>('/api/users', data);
 export const updateUser = (vk_id: string, data: Partial<User>) =>
   API.post(`/api/users/${vk_id}/update`, data);
 export const deleteUser = (vk_id: string) => API.delete(`/api/users/${vk_id}`);
@@ -68,5 +70,12 @@ export const getLogs = (limit?: number) =>
 // Stream
 export const finishStream = () => API.post('/api/stream/finish');
 export const clearAllData = () => API.post('/api/stream/clear-all');
+
+// Stream Events
+export const startStreamDay = () => API.post('/api/stream/start-day');
+export const createStreamSession = (event_type: string, stream_name?: string) =>
+  API.post('/api/stream/session/create', { event_type, stream_name });
+export const finishStreamSession = (session_id: number) =>
+  API.post(`/api/stream/session/${session_id}/finish`);
 
 export default API;

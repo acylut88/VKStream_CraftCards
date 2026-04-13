@@ -12,6 +12,7 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "noEmit": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictFunctionTypes": true,

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Race Winner - OBS Overlay</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 1920px;
+            height: 1080px;
+            background: transparent;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .container {
+            display: none;
+            animation: slideDown 0.6s ease-out forwards;
+        }
+
+        .container.show {
+            display: flex;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-200px) scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .winner-box {
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+            border-radius: 20px;
+            padding: 40px 60px;
+            box-shadow: 
+                0 20px 60px rgba(0, 0, 0, 0.5),
+                inset 0 0 40px rgba(255, 255, 255, 0.3);
+            text-align: center;
+            animation: pulse 1s ease-in-out infinite;
+            border: 3px solid rgba(255, 255, 255, 0.4);
+        }
+
+        .trophy {
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: bounce 1s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .title {
+            font-size: 36px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .player-name {
+            font-size: 48px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 3px 3px 10px rgba(0, 0, 0, 0.6);
+            margin-bottom: 20px;
+        }
+
+        .level {
+            font-size: 28px;
+            color: rgba(255, 255, 255, 0.95);
+            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.4);
+            font-weight: bold;
+        }
+
+        .fireflies {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            background: #fbbf24;
+            border-radius: 50%;
+            animation: float 3s ease-in-out infinite;
+            box-shadow: 0 0 20px #fbbf24;
+        }
+
+        .fireflies:nth-child(1) { left: 10%; top: 20%; animation-delay: 0s; }
+        .fireflies:nth-child(2) { left: 85%; top: 15%; animation-delay: 0.5s; }
+        .fireflies:nth-child(3) { left: 20%; top: 80%; animation-delay: 1s; }
+        .fireflies:nth-child(4) { left: 80%; top: 75%; animation-delay: 1.5s; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0) translateX(0); opacity: 0.6; }
+            50% { transform: translateY(-50px) translateX(30px); opacity: 1; }
+        }
+
+        .confetti {
+            position: fixed;
+            pointer-events: none;
+        }
+
+        .confetti-piece {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #fbbf24;
+            animation: confetti-fall 3s ease-in forwards;
+        }
+
+        @keyframes confetti-fall {
+            to {
+                transform: translateY(1080px) rotateZ(360deg);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="fireflies"></div>
+    <div class="fireflies"></div>
+    <div class="fireflies"></div>
+    <div class="fireflies"></div>
+
+    <div id="confetti-container" class="confetti"></div>
+
+    <div id="winner-container" class="container">
+        <div class="winner-box">
+            <div class="trophy">🏆</div>
+            <div class="title">🎉 Уровень 10! 🎉</div>
+            <div id="player-name" class="player-name">Loading...</div>
+            <div class="level">Первый достигший!</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8001/api/stream/overlay/card-winner';
+        const POLL_INTERVAL = 2000; // 2 seconds
+        const SHOW_DURATION = 5000; // Show for 5 seconds
+
+        let currentWinnerId = null;
+
+        function createConfetti() {
+            const container = document.getElementById('confetti-container');
+            for (let i = 0; i < 30; i++) {
+                const piece = document.createElement('div');
+                piece.className = 'confetti-piece';
+                piece.style.left = Math.random() * 1920 + 'px';
+                piece.style.top = '-10px';
+                piece.style.background = ['#fbbf24', '#f59e0b', '#d97706', '#fff'][Math.floor(Math.random() * 4)];
+                piece.style.animation = `confetti-fall ${2 + Math.random()}s ease-in forwards`;
+                piece.style.delay = (Math.random() * 0.5) + 's';
+                container.appendChild(piece);
+                setTimeout(() => piece.remove(), 3000);
+            }
+        }
+
+        async function checkWinner() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                if (!data || !data.vk_id) return;
+
+                // Only show if there's a new winner
+                if (data.vk_id !== currentWinnerId) {
+                    currentWinnerId = data.vk_id;
+                    showWinner(data);
+                }
+            } catch (error) {
+                console.error('Failed to fetch winner:', error);
+            }
+        }
+
+        function showWinner(data) {
+            const container = document.getElementById('winner-container');
+            const playerName = document.getElementById('player-name');
+
+            playerName.textContent = data.nickname || data.vk_id;
+            container.classList.add('show');
+
+            createConfetti();
+
+            // Hide after 5 seconds
+            setTimeout(() => {
+                container.classList.remove('show');
+            }, SHOW_DURATION);
+        }
+
+        // Initial fetch and poll
+        checkWinner();
+        setInterval(checkWinner, POLL_INTERVAL);
+    </script>
+</body>
+</html>

@@ -3,22 +3,33 @@ import { Dashboard } from './components/Dashboard';
 import { PlayerManagement } from './components/PlayerManagement';
 import { BoxManager } from './components/BoxManager';
 import { Logs } from './components/Logs';
+import { EventsControl } from './components/EventsControl';
+import { EventCardRace } from './components/EventCardRace';
+import { EventACFarming } from './components/EventACFarming';
+import { SessionArchive } from './components/SessionArchive';
+import { RareDropsNotifications } from './components/RareDropsNotifications';
 import {
   LayoutDashboard,
   Users,
   Gift,
   FileText,
+  Trophy,
   LogOut,
   Menu,
   X
 } from 'lucide-react';
 
 function App() {
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'players' | 'boxes' | 'logs'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'players' | 'boxes' | 'logs' | 'events' | 'cardrace' | 'acfarm' | 'archive' | 'raredrops'>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const navigation = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'events', label: '🎯 События стрима', icon: Trophy },
+    { id: 'cardrace', label: '🃏 Гонка Карт', icon: Gift },
+    { id: 'acfarm', label: '💰 AC Фарминг', icon: FileText },
+    { id: 'raredrops', label: '✨ Редкие Карты', icon: FileText },
+    { id: 'archive', label: '📚 Архив сессий', icon: FileText },
     { id: 'players', label: 'Управление игроками', icon: Users },
     { id: 'boxes', label: 'Выдать боксы', icon: Gift },
     { id: 'logs', label: 'Логи событий', icon: FileText },
@@ -27,6 +38,11 @@ function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard': return <Dashboard />;
+      case 'events': return <EventsControl />;
+      case 'cardrace': return <EventCardRace />;
+      case 'acfarm': return <EventACFarming />;
+      case 'raredrops': return <RareDropsNotifications />;
+      case 'archive': return <SessionArchive />;
       case 'players': return <PlayerManagement />;
       case 'boxes': return <BoxManager />;
       case 'logs': return <Logs />;

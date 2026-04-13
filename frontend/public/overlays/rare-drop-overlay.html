@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rare Drop Alert - OBS Overlay</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 1920px;
+            height: 1080px;
+            background: transparent;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .alert-container {
+            display: none;
+            position: fixed;
+            top: -400px;
+            left: 50%;
+            transform: translateX(-50%);
+            animation: slideDown 0.6s ease-out forwards;
+            z-index: 1000;
+        }
+
+        .alert-container.show {
+            display: block;
+        }
+
+        @keyframes slideDown {
+            from {
+                top: -400px;
+                opacity: 0;
+            }
+            to {
+                top: 50px;
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                top: 50px;
+                opacity: 1;
+            }
+            to {
+                top: -400px;
+                opacity: 0;
+            }
+        }
+
+        .alert-box {
+            background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 50%, #7c3aed 100%);
+            border-radius: 20px;
+            padding: 35px 50px;
+            box-shadow: 
+                0 20px 80px rgba(139, 92, 246, 0.5),
+                inset 0 0 30px rgba(255, 255, 255, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.4);
+            min-width: 600px;
+            text-align: center;
+        }
+
+        .alert-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stars {
+            font-size: 35px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .alert-title {
+            font-size: 32px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .card-name {
+            font-size: 44px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 3px 3px 12px rgba(0, 0, 0, 0.6);
+            margin: 20px 0;
+            letter-spacing: 1px;
+        }
+
+        .player-and-prob {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin-top: 20px;
+            gap: 30px;
+        }
+
+        .player-box {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 15px 25px;
+            border-radius: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .player-label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .player-name {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 1px 1px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        .probability-box {
+            background: rgba(255, 215, 0, 0.2);
+            padding: 15px 25px;
+            border-radius: 12px;
+            border: 2px solid rgba(255, 215, 0, 0.5);
+        }
+
+        .prob-label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .prob-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 1px 1px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        .sparkles {
+            position: fixed;
+            pointer-events: none;
+        }
+
+        .sparkle {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: #ffd700;
+            border-radius: 50%;
+            animation: twinkle 1s ease-in-out infinite;
+            box-shadow: 0 0 10px #ffd700;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+
+        .glow {
+            position: fixed;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(168, 85, 247, 0.3) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.2); }
+        }
+    </style>
+</head>
+<body>
+    <div id="glow" class="glow"></div>
+    <div id="sparkles-container" class="sparkles"></div>
+
+    <div id="alert-container" class="alert-container">
+        <div class="alert-box">
+            <div class="alert-header">
+                <div class="stars">✨</div>
+                <div class="alert-title">РЕДКАЯ КАРТА!</div>
+                <div class="stars">✨</div>
+            </div>
+            
+            <div id="card-name" class="card-name">Loading...</div>
+
+            <div class="player-and-prob">
+                <div class="player-box">
+                    <div class="player-label">Получил игрок</div>
+                    <div id="player-name" class="player-name">Loading...</div>
+                </div>
+                <div class="probability-box">
+                    <div class="prob-label">Шанс выпадения</div>
+                    <div id="probability" class="prob-value">0%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8001/api/stream/overlay/rare-drop';
+        const POLL_INTERVAL = 3000; // 3 seconds
+        const DISPLAY_DURATION = 4000; // Show for 4 seconds
+
+        let lastDropId = null;
+
+        function createSparkles() {
+            const container = document.getElementById('sparkles-container');
+            container.innerHTML = ''; // Clear previous sparkles
+            
+            for (let i = 0; i < 20; i++) {
+                const sparkle = document.createElement('div');
+                sparkle.className = 'sparkle';
+                sparkle.style.left = Math.random() * 1920 + 'px';
+                sparkle.style.top = Math.random() * 1080 + 'px';
+                sparkle.style.animation = `twinkle ${0.5 + Math.random()}s ease-in-out infinite`;
+                sparkle.style.animationDelay = (Math.random() * 1) + 's';
+                container.appendChild(sparkle);
+            }
+
+            // Remove sparkles after animation
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 4000);
+        }
+
+        function positionGlow() {
+            const alertBox = document.getElementById('alert-container');
+            const glow = document.getElementById('glow');
+            glow.style.left = 'calc(50% - 150px)';
+            glow.style.top = 'calc(50% - 150px)';
+        }
+
+        async function checkRareDrop() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                if (!data || !data.card_name) return;
+
+                // Only show if there's a new drop
+                if (data.id !== lastDropId) {
+                    lastDropId = data.id;
+                    showAlert(data);
+                }
+            } catch (error) {
+                console.error('Failed to fetch rare drop:', error);
+            }
+        }
+
+        function showAlert(data) {
+            const container = document.getElementById('alert-container');
+            
+            document.getElementById('card-name').textContent = data.card_name;
+            document.getElementById('player-name').textContent = data.player_nickname || data.player_vk_id;
+            
+            const probability = (data.probability * 100).toFixed(3);
+            document.getElementById('probability').textContent = probability + '%';
+
+            // Position glow behind alert
+            positionGlow();
+            
+            // Create sparkles
+            createSparkles();
+
+            // Show alert
+            container.classList.add('show');
+
+            // Hide after duration
+            setTimeout(() => {
+                container.classList.remove('show');
+            }, DISPLAY_DURATION);
+        }
+
+        // Simulate a rare drop for testing (comment out for production)
+        function simulateRareDrop() {
+            const testData = {
+                id: Date.now(),
+                card_name: '⭐ Легендарная Карта',
+                player_vk_id: 'test_user_123',
+                player_nickname: 'TheLegend',
+                probability: 0.0035
+            };
+            showAlert(testData);
+        }
+
+        // Initial fetch and poll
+        checkRareDrop();
+        setInterval(checkRareDrop, POLL_INTERVAL);
+
+        // Uncomment to test animation:
+        // setTimeout(simulateRareDrop, 2000);
+    </script>
+</body>
+</html>
