@@ -17,18 +17,16 @@ class DatabaseManager:
                     pa_charges INTEGER DEFAULT 0,
                     pa_active_today INTEGER DEFAULT 0,
                     std_boxes_today INTEGER DEFAULT 0,
-                    elite_boxes_today INTEGER DEFAULT 0
+                    elite_boxes_today INTEGER DEFAULT 0,
+                    ac_balance INTEGER DEFAULT 0,
+                    ac_today INTEGER DEFAULT 0
                 )
             ''')
             # Таблица инвентаря
             await db.execute('''
                 CREATE TABLE IF NOT EXISTS inventory (
-                    user_id TEXT,
-                    card_type TEXT,
-                    card_level INTEGER,
-                    quantity INTEGER DEFAULT 0,
-                    PRIMARY KEY (user_id, card_type, card_level),
-                    FOREIGN KEY (user_id) REFERENCES users(vk_id)
+                    user_id TEXT, card_type TEXT, card_level INTEGER, quantity INTEGER DEFAULT 0,
+                    PRIMARY KEY (user_id, card_type, card_level)
                 )
             ''')
             await db.commit()
@@ -39,27 +37,31 @@ class DatabaseManager:
                     nickname TEXT,
                     box_type TEXT,
                     count INTEGER,
-                    rare_drops TEXT,  -- Будем хранить как строку через запятую
-                    merges TEXT,      -- Аналогично
-                    is_elite INTEGER
+                    rare_drops TEXT,
+                    merges TEXT,
+                    is_elite INTEGER DEFAULT 0,  -- ПРОВЕРЬ ЭТУ СТРОКУ
+                    ac_won INTEGER DEFAULT 0     -- И ЭТУ ТОЖЕ
                 )
             ''')
 
     async def get_user(self, vk_id, nickname=None):
-        """Получает юзера или создает нового (Welcome-бонус: 3 звезды + 2 ПА)"""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute("SELECT * FROM users WHERE vk_id = ?", (vk_id,)) as cursor:
                 user = await cursor.fetchone()
-                
             if not user and nickname:
-                await db.execute("""
-                    INSERT INTO users (vk_id, nickname, stars, pa_charges) 
-                    VALUES (?, ?, 3, 2)
-                """, (vk_id, nickname))
+                await db.execute("INSERT INTO users (vk_id, nickname, stars, pa_charges) VALUES (?, ?, 3, 2)", (vk_id, nickname))
                 await db.commit()
                 return await self.get_user(vk_id)
             return user
+    
+    async def update_ac(self, vk_id, amount):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE users SET ac_balance = MAX(0, ac_balance + ?), 
+                ac_today = MAX(0, ac_today + ?) WHERE vk_id = ?
+            """, (amount, amount, vk_id))
+            await db.commit()
 
     async def add_raw_cards(self, vk_id, cards):
         """Добавляет выпавшие из бокса карты в инвентарь (без мержа)"""
@@ -144,12 +146,9 @@ class DatabaseManager:
         return export_data
 
     async def reset_day(self):
-        """Красная кнопка: сброс дня и понижение звезд"""
         async with aiosqlite.connect(self.db_path) as db:
-            # Понижаем звезды прогульщикам
             await db.execute("UPDATE users SET stars = MAX(1, stars - 1) WHERE std_boxes_today < 12")
-            # Обнуляем счетчики
-            await db.execute("UPDATE users SET std_boxes_today = 0, elite_boxes_today = 0, pa_active_today = 0")
+            await db.execute("UPDATE users SET std_boxes_today = 0, elite_boxes_today = 0, pa_active_today = 0, ac_today = 0")
             await db.commit()
 
     async def get_all_users_admin(self):
@@ -174,28 +173,26 @@ class DatabaseManager:
                 return data
 
     async def update_user_field(self, vk_id, field, change):
-        """Универсальный метод для +/- параметров (звезды, ПА)"""
-        # Безопасный список полей, которые можно менять
-        allowed_fields = ["stars", "pa_charges"]
-        if field not in allowed_fields:
-            return
-
+        allowed = ["stars", "pa_charges", "ac_balance"]
+        if field not in allowed: return
         async with aiosqlite.connect(self.db_path) as db:
-            # Используем MAX(0, ...), чтобы значения не уходили в минус
-            await db.execute(
-                f"UPDATE users SET {field} = MAX(0, {field} + ?) WHERE vk_id = ?",
-                (change, vk_id)
-            )
+            await db.execute(f"UPDATE users SET {field} = MAX(0, {field} + ?) WHERE vk_id = ?", (change, vk_id))
             await db.commit()
 
-    async def add_log(self, nickname, box_type, count, rare_drops, merges, is_elite):
+    async def add_log(self, nickname, box_type, count, rare_drops, merges, is_elite, ac_won=0):
+        """Добавляет запись в лог событий (включая AC)"""
         async with aiosqlite.connect(self.db_path) as db:
             from datetime import datetime
             timestamp = datetime.now().strftime("%H:%M:%S")
+            
+            # Превращаем списки в строки для хранения в БД
+            rare_str = ", ".join(rare_drops) if rare_drops else ""
+            merges_str = ", ".join(merges) if merges else ""
+
             await db.execute("""
-                INSERT INTO logs (timestamp, nickname, box_type, count, rare_drops, merges, is_elite)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (timestamp, nickname, box_type, count, ", ".join(rare_drops), ", ".join(merges), 1 if is_elite else 0))
+                INSERT INTO logs (timestamp, nickname, box_type, count, rare_drops, merges, is_elite, ac_won)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (timestamp, nickname, box_type, count, rare_str, merges_str, 1 if is_elite else 0, ac_won))
             await db.commit()
 
     async def clear_all_inventories(self):

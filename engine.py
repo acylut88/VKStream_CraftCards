@@ -1,8 +1,8 @@
-import math
-import random
-import csv
+import math, random, csv
 
 class GameEngine:
+    card_types = ['LT', 'ST', 'TT', 'PT']
+    
     def __init__(self):
         # Веса для стандартного бокса (1-12)
         self.standard_weights = { 
@@ -43,10 +43,7 @@ class GameEngine:
             "3": [0.00, 0.00, 80.00, 15.00, 5.00, 0.00, 0.00, 0.00, 0.00, 0.00],
         }
 
-        self.card_types = ['LT', 'ST', 'TT', 'PT']
-
-    def calculate_card_count(self, box_number, stars, has_pa):
-        base = 4 + box_number * 2  # стандартный бокс, 1 звезда
+    def calculate_card_count(self, box_num, stars, has_pa):
         """
             № лутбокса - 1 звезда, кол-во боксов
                     1  - 6
@@ -62,24 +59,28 @@ class GameEngine:
                     11 - 26
                     12 - 28
         """ 
-        if has_pa:
-            return math.ceil(base * 1.75)
-        if stars == 3:
-            return math.ceil(base * 1.5)
-        if stars == 2:
-            return base + 3  
+        base = 4 + box_num * 2
+        if has_pa: return math.ceil(base * 1.75)
+        if stars == 3: return math.ceil(base * 1.5)
+        if stars == 2: return base + 3
         return base
 
-    def get_random_cards(self, box_number, has_pa, count, is_elite=False):
+    def calculate_ac_reward(self, box_num, is_elite, has_pa):
+        if is_elite: base_ac = box_num * 10
+        elif box_num >= 10: base_ac = box_num * 5
+        else: base_ac = box_num * 2
+        return base_ac * 2 if has_pa else base_ac
+
+    def get_random_cards(self, box_num, has_pa, count, is_elite):
         """Генерирует список выпавших карт на основе переданного количества"""
         levels = list(range(1, 11))
         
         if is_elite:
-            weights = self.elite_box_weights[str(min(box_number, 3))]
+            weights = self.elite_box_weights[str(min(box_num, 3))]
         elif has_pa:
-            weights = self.pa_box_weights[str(min(box_number, 12))]
+            weights = self.pa_box_weights[str(min(box_num, 12))]
         else:
-            weights = self.standard_weights[str(min(box_number, 12))]
+            weights = self.standard_weights[str(min(box_num, 12))]
             
         dropped = []
         for _ in range(count):
@@ -87,10 +88,10 @@ class GameEngine:
             c_type = random.choice(self.card_types)
             dropped.append({'type': c_type, 'lvl': lvl})
         return dropped
+        
 
-    def export_to_csv(self, players_data, filename="players_weight.csv"):
-        """Экспорт в CSV с разделителем |"""
+    def export_csv(self, data, filename):
         with open(filename, 'w', encoding='utf-8', newline='') as f:
             writer = csv.writer(f, delimiter='|')
-            for player in players_data:
-                writer.writerow([player['nickname'], player['weight']])
+            for row in data:
+                writer.writerow([row['nickname'], row['weight']])
