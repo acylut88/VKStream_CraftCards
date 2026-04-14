@@ -3,3 +3,4 @@ __pycache__/
 *.db
 players_weight.csv
 .env
+chatbot_chrome_profile/

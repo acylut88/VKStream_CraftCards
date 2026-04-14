@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(pytest *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(mkdir *)",
+      "Bash(dir *)",
+      "Bash(playwright *)",
+      "Bash(pip show *)"
     ]
   },
   "$version": 3
