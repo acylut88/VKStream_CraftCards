@@ -1,17 +1,92 @@
 """
-Расширенное REST API для админ-панели React
+Расширенное REST API для админ-панели React + ChatBot
 """
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import asynccontextmanager
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from datetime import datetime, timedelta
 import json
+import asyncio
+import threading
 
 from database import DatabaseManager
 from main import db, engine, process_lootbox_opening, game_logs
 
-app = FastAPI(title="VKStream API", version="1.0")
+# --- ChatBot Integration ---
+CHATBOT_ENABLED = True
+chatbot_thread = None
+
+def run_chatbot_in_thread():
+    """Запуск чат-бота в отдельном потоке с собственным event loop"""
+    import sys
+    import warnings
+    
+    # Игнорировать deprecation warnings для ProactorEventLoop
+    warnings.filterwarnings('ignore', category=DeprecationWarning)
+    
+    # Установить ProactorEventLoop для нового потока
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        from chatbot.database.database import init_db as chatbot_init_db
+        from chatbot.bot.bot_Main import bot_task
+        
+        # Инициализируем БД
+        loop.run_until_complete(chatbot_init_db())
+        print("[ChatBot] Database initialized in thread")
+        
+        # Запускаем чат-бот
+        loop.run_until_complete(bot_task())
+    except Exception as e:
+        print(f"[ChatBot] Error in thread: {e}")
+    finally:
+        loop.close()
+
+async def start_chatbot_background():
+    """Запуск чат-бота как фоновой задачи"""
+    global chatbot_thread
+    
+    if not CHATBOT_ENABLED:
+        print("[ChatBot] Disabled in configuration")
+        return
+    
+    try:
+        print("[ChatBot] Starting in separate thread...")
+        
+        # Запускаем в отдельном потоке чтобы избежать конфликта event loops
+        chatbot_thread = threading.Thread(
+            target=run_chatbot_in_thread,
+            daemon=True,
+            name="ChatBotThread"
+        )
+        chatbot_thread.start()
+        print("[ChatBot] Background thread started")
+        
+    except Exception as e:
+        print(f"[ChatBot] Error starting chatbot: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler для startup/shutdown"""
+    # Startup
+    print("[Startup] Starting VKStream CraftCards API...")
+    await start_chatbot_background()
+    yield
+    # Shutdown
+    print("[Shutdown] Shutting down VKStream CraftCards API...")
+    if chatbot_thread and chatbot_thread.is_alive():
+        print("[ChatBot] Waiting for chatbot thread to finish...")
+        # ChatBot thread daemon - завершится автоматически
+        chatbot_thread.join(timeout=2.0)
+    print("[Shutdown] Complete")
+
+app = FastAPI(title="VKStream API", version="1.0", lifespan=lifespan)
 
 # --- CORS для React фронтенда ---
 app.add_middleware(
@@ -574,6 +649,46 @@ async def get_all_sessions():
         return await db.get_stream_sessions_all()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- ChatBot Management Endpoints ---
+
+@app.get("/api/chatbot/status")
+async def get_chatbot_status():
+    """Получить статус чат-бота"""
+    return {
+        "enabled": CHATBOT_ENABLED,
+        "status": "running" if CHATBOT_ENABLED else "disabled",
+        "uptime": "N/A"  # Можно добавить отслеживание времени работы
+    }
+
+@app.post("/api/chatbot/toggle")
+async def toggle_chatbot(enabled: bool = True):
+    """Включить/выключить чат-бот"""
+    global CHATBOT_ENABLED
+    CHATBOT_ENABLED = enabled
+    
+    if enabled:
+        await start_chatbot_background()
+    
+    return {
+        "status": "enabled" if enabled else "disabled",
+        "message": "ChatBot " + ("включен" if enabled else "выключен")
+    }
+
+@app.get("/api/chatbot/commands")
+async def get_chatbot_commands():
+    """Получить список команд чат-бота"""
+    from chatbot.constants.cnst_Bot import BOT_COMMANDS
+    
+    # Преобразуем в удобный формат
+    commands_list = []
+    for category, cmds in BOT_COMMANDS.items():
+        commands_list.append({
+            "category": category,
+            "commands": cmds
+        })
+    
+    return commands_list
 
 # --- WebSocket для real-time обновлений ---
 
